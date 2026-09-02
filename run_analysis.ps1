@@ -21,5 +21,7 @@ Head '2. stage model';                           Sql 'sql\01_stage_model.sql'
 Head '3. analytics layer';                        Sql 'sql\02_analytics_layer.sql'
 Head '4. validation';                             Sql 'sql\03_validate.sql'
 Head '5. guided tour';                            Sql 'sql\04_demo.sql'
+Head '6. Power BI semantic views';                Sql 'powerbi\01_semantic_views.sql'
 
 Write-Host "`nDone. Every check in step 4 should read PASS." -ForegroundColor Green
+Write-Host "For the dashboard, open Power BI Desktop and follow powerbi\model-guide.md." -ForegroundColor Green

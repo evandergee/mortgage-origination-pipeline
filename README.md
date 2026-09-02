@@ -1,10 +1,11 @@
-# Mortgage loan-origination pipeline analytics (SQL Server)
+# Mortgage loan-origination pipeline analytics (SQL Server + Power BI)
 
 The **production side** of the mortgage business: applications moving through
 underwriting to funding, modelled as an **event log** and analysed the way a
 pipeline / production analyst would — funnel and pull-through, cycle time and
 bottlenecks, SLA breaches, the rate-lock desk, loan-officer scorecards, and a
-pull-through-weighted funding forecast.
+pull-through-weighted funding forecast. Plus a **Power BI semantic model** and a
+4-page report build guide ([`powerbi/`](powerbi/)).
 
 ```powershell
 .\run_analysis.ps1
@@ -82,15 +83,25 @@ spread between the top and bottom LO on similar volume.
 ## Files
 
 ```
-00_generate_pipeline.sql   Application, ApplicationEvent, LoanOfficer, Calendar,
-                           RateLock, StageSLA  (+ ApplicationPlan, the generator's driver)
-01_stage_model.sql         vStageDurations, vApplicationCurrent
-02_analytics_layer.sql     the eight views above
-03_validate.sql            9 checks (event ordering, funnel monotonicity,
-                           one-current-stage-per-loan, business-day sanity, ...)
-04_demo.sql                guided tour
+sql/00_generate_pipeline.sql   Application, ApplicationEvent, LoanOfficer, Calendar,
+                               RateLock, StageSLA  (+ ApplicationPlan, the generator's driver)
+sql/01_stage_model.sql         vStageDurations, vApplicationCurrent
+sql/02_analytics_layer.sql     the eight views above
+sql/03_validate.sql            9 checks (event ordering, funnel monotonicity,
+                               one-current-stage-per-loan, business-day sanity, ...)
+sql/04_demo.sql                guided tour
 run_analysis.ps1
+powerbi/                       Power BI semantic layer (see below)
 ```
+
+## Power BI layer (`powerbi/`)
+
+| File | |
+|---|---|
+| `01_semantic_views.sql` | `pbi` schema — a star (`DimDate` / `DimLoanOfficer` / `DimStage` / `FactApplication` / `FactStageDuration` / `FactForecast`) shaped for Import |
+| `measures.dax` | ~30 measures — pull-through, funnel conversion, cycle time (median/p90), SLA breaches, lock desk, pull-through-weighted forecast, and daily time intelligence (YTD / YoY / rolling 3-month) |
+| `model-guide.md` | connect, relationships (incl. the inactive funded-date role), mark-as-date-table, formatting |
+| `report-guide.md` | 4 pages visual-by-visual with wireframes: Executive · Cycle Time & Bottlenecks · Live Pipeline & Forecast · Loan Officers |
 
 ## Skills demonstrated
 
@@ -102,3 +113,4 @@ run_analysis.ps1
 - A pull-through-weighted pipeline forecast (historical rates joined back onto the live book)
 - Set-based synthetic-data generation; indexing an events table for view performance
 - Automated data-quality validation
+- **Power BI** star-schema modelling, a DAX measure library, and time intelligence with an inactive date role

@@ -1,0 +1,135 @@
+// =============================================================================
+// DAX measure library  --  loan-origination pipeline model
+// -----------------------------------------------------------------------------
+// Create a blank table  _Measures  (Home > Enter data), paste each measure
+// (Modeling > New measure), then delete the dummy column.
+//
+// Star from 01_semantic_views.sql:
+//   FactApplication[ApplicationDateKey] -> DimDate[DateKey]   (active)
+//   FactApplication[FundedDateKey]      -> DimDate[DateKey]   (INACTIVE)
+//   FactApplication[LoanOfficerId]      -> DimLoanOfficer     (active)
+//   FactStageDuration[EnteredDateKey]   -> DimDate[DateKey]   (active)
+//   FactStageDuration[StageKey]         -> DimStage           (active)
+//   FactStageDuration[LoanOfficerId]    -> DimLoanOfficer     (active)
+//   FactForecast[CurrentStageKey]       -> DimStage           (active)
+//   DimDate marked as date table on [Date]
+// =============================================================================
+
+
+// ---- volume & funnel ------------------------------------------------------
+
+Applications := COUNTROWS ( FactApplication )
+
+Funded := CALCULATE ( [Applications], FactApplication[IsFunded] = TRUE () )
+
+In Pipeline := CALCULATE ( [Applications], FactApplication[IsInPipeline] = TRUE () )
+
+Fallout := CALCULATE ( [Applications], FactApplication[IsFallout] = TRUE () )
+
+Decided := [Funded] + [Fallout]
+
+Funded Volume :=
+CALCULATE ( SUM ( FactApplication[LoanAmount] ), FactApplication[IsFunded] = TRUE () )
+
+Pipeline Volume :=
+CALCULATE ( SUM ( FactApplication[LoanAmount] ), FactApplication[IsInPipeline] = TRUE () )
+
+Pull-Through % := DIVIDE ( [Funded], [Decided] )
+
+Raw Pull-Through % := DIVIDE ( [Funded], [Applications] )
+
+Fallout Rate % := DIVIDE ( [Fallout], [Decided] )
+
+Avg Loan Amount := DIVIDE ( SUM ( FactApplication[LoanAmount] ), [Applications] )
+
+
+// ---- funnel: how many reached each stage --------------------------------
+// Put DimStage on the axis; this counts distinct applications that hit it.
+
+Reached Stage (apps) := DISTINCTCOUNT ( FactStageDuration[ApplicationId] )
+
+Stage Conversion % :=
+VAR thisStage = [Reached Stage (apps)]
+VAR priorStage =
+    CALCULATE (
+        [Reached Stage (apps)],
+        FILTER ( ALL ( DimStage ), DimStage[StageOrder] = MIN ( DimStage[StageOrder] ) - 1 )
+    )
+RETURN DIVIDE ( thisStage, priorStage )
+
+
+// ---- cycle time (business days) ------------------------------------------
+
+Completed Stage Instances :=
+CALCULATE ( COUNTROWS ( FactStageDuration ), FactStageDuration[ExitReason] = "Advanced" )
+
+Avg Stage Days :=
+CALCULATE ( AVERAGE ( FactStageDuration[BusinessDays] ), FactStageDuration[ExitReason] = "Advanced" )
+
+Median Stage Days :=
+CALCULATE ( MEDIAN ( FactStageDuration[BusinessDays] ), FactStageDuration[ExitReason] = "Advanced" )
+
+P90 Stage Days :=
+CALCULATE ( PERCENTILE.INC ( FactStageDuration[BusinessDays], 0.9 ), FactStageDuration[ExitReason] = "Advanced" )
+
+Median App-to-Fund Days := MEDIAN ( FactApplication[AppToFundBizDays] )
+
+Avg App-to-Fund Days := AVERAGE ( FactApplication[AppToFundBizDays] )
+
+P90 App-to-Fund Days := PERCENTILE.INC ( FactApplication[AppToFundBizDays], 0.9 )
+
+
+// ---- SLA ----------------------------------------------------------------
+
+SLA Breaches := CALCULATE ( COUNTROWS ( FactStageDuration ), FactStageDuration[IsSLABreach] = TRUE () )
+
+Avg Days Over SLA :=
+CALCULATE ( AVERAGE ( FactStageDuration[DaysOverSLA] ), FactStageDuration[IsSLABreach] = TRUE () )
+
+Loans in Pipeline (StageDur) :=
+CALCULATE ( DISTINCTCOUNT ( FactStageDuration[ApplicationId] ), FactStageDuration[IsCurrentStage] = TRUE () )
+
+
+// ---- rate-lock desk ---------------------------------------------------
+
+Active Locks := CALCULATE ( [Applications], FactApplication[LockStatus] = "Active" )
+
+Lock Extension Rate % :=
+DIVIDE (
+    CALCULATE ( [Applications], FactApplication[LockExtensionCount] > 0, NOT ISBLANK ( FactApplication[LockStatus] ) ),
+    CALCULATE ( [Applications], NOT ISBLANK ( FactApplication[LockStatus] ) )
+)
+
+Lock Pull-Through % :=
+DIVIDE (
+    CALCULATE ( [Applications], FactApplication[LockStatus] = "Used" ),
+    CALCULATE ( [Applications], FactApplication[LockStatus] IN { "Used", "Expired" } )
+)
+
+
+// ---- pull-through-weighted forecast ---------------------------------
+
+Pipeline Amount (Forecast) := SUM ( FactForecast[LoanAmount] )
+
+Expected to Fund := SUM ( FactForecast[ExpectedFundedAmount] )
+
+Expected Pull-Through % := DIVIDE ( [Expected to Fund], [Pipeline Amount (Forecast)] )
+
+
+// ---- time intelligence (daily date table) --------------------------
+
+Applications MTD := TOTALMTD ( [Applications], DimDate[Date] )
+
+Applications YTD := TOTALYTD ( [Applications], DimDate[Date] )
+
+Funded Volume (by funded date) :=
+CALCULATE ( [Funded Volume], USERELATIONSHIP ( FactApplication[FundedDateKey], DimDate[DateKey] ) )
+
+Funded Volume PY :=
+CALCULATE ( [Funded Volume (by funded date)], SAMEPERIODLASTYEAR ( DimDate[Date] ) )
+
+Funded Volume YoY % :=
+DIVIDE ( [Funded Volume (by funded date)] - [Funded Volume PY], [Funded Volume PY] )
+
+Applications Rolling 3M :=
+CALCULATE ( [Applications], DATESINPERIOD ( DimDate[Date], MAX ( DimDate[Date] ), -3, MONTH ) )
