@@ -1,5 +1,7 @@
 # Mortgage loan-origination pipeline analytics (SQL Server + Power BI)
 
+> Built with Claude as an AI coding partner.
+
 The **production side** of the mortgage business: applications moving through
 underwriting to funding, modelled as an **event log** and analysed the way a
 pipeline / production analyst would — funnel and pull-through, cycle time and
